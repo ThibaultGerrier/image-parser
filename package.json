@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "tsc --watch --inlineSourceMap",
-    "serve": "http-server"
+    "serve": "cd browser && http-server"
   },
   "devDependencies": {
     "http-server": "^14.1.1",

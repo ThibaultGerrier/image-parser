@@ -1,45 +1,12 @@
 // @ts-ignore
-import {
-  inflate,
-  Inflate,
-} from "https://unpkg.com/pako@2.1.0/dist/pako.esm.mjs";
-
-(document.getElementById("button") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    const input = (document.getElementById("input") as HTMLInputElement).value;
-    console.log(input);
-    loadImage(input);
-  }
-);
-
-async function loadImage(name: string) {
-  const res = await fetch("http://localhost:8081/" + name);
-  // const res = await fetch("../pngs/tiny.png");
-  if (!res.body || !res.ok) {
-    console.error("file not found");
-    return;
-  }
-  const png = new PngProcessor();
-  const buf = await res.arrayBuffer();
-  png.processDataChunk(new Uint8Array(buf));
-  // for await (const a of res.body as any) {
-  //   console.log("got chunk");
-  //   try {
-  //     png.processDataChunk(a);
-  //   } catch (e) {
-  //     console.error(e);
-  //   }
-  // }
-}
-// loadImage('Saved%20Pictures/Capture2.PNG')
+import { Inflate } from "https://unpkg.com/pako@2.1.0/dist/pako.esm.mjs";
 
 type ChunkHeader = {
   type: string;
   length: number;
 };
 
-class PngProcessor {
+export class PngProcessor {
   state: "magic" = "magic";
   position = 0;
   inflator = new Inflate();
@@ -120,6 +87,8 @@ class PngProcessor {
     const image = this.toImageData(this.pixelData);
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
+    canvas.width = this.width;
+    canvas.height = this.height;
     ctx?.putImageData(image, 0, 0);
   }
 
@@ -221,7 +190,6 @@ class PngProcessor {
 
     for (let row = 0; row < this.height; row++) {
       const filterType = data[row * bytesPerRow];
-      console.log(filterType);
       for (let col = 0; col < this.width * bytesPerPixel; col++) {
         const left = col < bytesPerPixel;
         const top = row === 0;

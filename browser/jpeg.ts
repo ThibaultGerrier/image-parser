@@ -1,28 +1,3 @@
-(document.getElementById("button") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    const input = (document.getElementById("input") as HTMLInputElement).value;
-    console.log(input);
-    loadImage(input);
-  }
-);
-
-async function loadImage(url: string) {
-  const res = await fetch(url);
-  // const res = await fetch("../pngs/tiny.png");
-  if (!res.body || !res.ok) {
-    console.error("file not found");
-    return;
-  }
-  const jpeg = new JpegProcessor();
-  const buf = await res.arrayBuffer();
-  jpeg.processDataChunk(new Uint8Array(buf));
-  console.log(jpeg);
-}
-
-// loadImage("http://localhost:8081/samples/Untitled.jpg");
-// loadImage("http://localhost:8081/samples/profile.jpg");
-
 const markerMapping: Record<number, string> = {
   0xffd8: "Start of Image",
   0xffe0: "Application Default Header",
@@ -34,12 +9,13 @@ const markerMapping: Record<number, string> = {
   0xfffe: "Comment",
 };
 
-class JpegProcessor {
+export class JpegProcessor {
   quant: Record<number, Uint8Array> = {};
   huffmanTables: Record<number, HuffmanTable> = {};
   quantMapping: number[] = [];
   height: number;
   width: number;
+  progressive = false;
 
   processDataChunk(data: Uint8Array) {
     const dv = new DataView(data.buffer);
@@ -76,7 +52,14 @@ class JpegProcessor {
       } else if (marker === 0xffc0) {
         // frame data
         const len = dv.getUint16(pos);
-        this.decodeFrameData(data.subarray(pos + 2, pos + len), pos + 2);
+        this.decodeFrameData(data.slice(pos + 2, pos + len));
+        pos += len;
+      } else if (marker === 0xffc2) {
+        throw new Error("progressive Jpeg not supported");
+        // progressive frame data
+        this.progressive = true;
+        const len = dv.getUint16(pos);
+        this.decodeFrameData(data.slice(pos + 2, pos + len));
         pos += len;
       } else if (marker === 0xffda) {
         // scan data
@@ -112,21 +95,44 @@ class JpegProcessor {
     this.quant[hdr] = data.subarray(1, 1 + 64);
   }
 
-  decodeFrameData(data: Uint8Array, pos: number) {
-    const dv = new DataView(data.buffer, pos);
+  decodeFrameData(data: Uint8Array) {
+    const dv = new DataView(data.buffer);
     const precision = data[0];
     const height = dv.getUint16(1);
     const width = dv.getUint16(3);
     const numComponents = data[5];
     let p = 6;
+
     for (let c = 0; c < numComponents; c++) {
       const id = dv.getUint8(p++);
       const samp = dv.getUint8(p++);
       const qtbId = dv.getUint8(p++);
+      const a = new Uint8Array(1);
+      a[0] = samp;
+      const s = new BitStream(a);
+      console.log(s);
+      const vert = s.getNBits(4);
+      const hor = s.getNBits(4);
+
+      // 17 no subsampling
+      // 34 quarter
+      // 33 horizontal
+      // 18 vertical
+      console.log({ id, samp, vert, hor, qtbId, precision });
+
+      if (samp !== 17) {
+        throw new Error("chroma subsampling ratio not supported");
+      }
+
       this.quantMapping.push(qtbId);
     }
     this.height = height;
     this.width = width;
+    console.log(this);
+  }
+
+  decodeProgressiveFrameData(data: Uint8Array) {
+    console.log({ data });
   }
 
   decodeScanData(data: Uint8Array, headerLength: number) {
@@ -137,8 +143,11 @@ class JpegProcessor {
     let oldLumDCoef = 0;
     let oldCrDCoef = 0;
     let oldCbDCoef = 0;
+    const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+    canvas.width = this.width;
+    canvas.height = this.height;
     for (let y = 0; y < Math.floor(this.height / 8); y++) {
-      for (let x = 0; x < Math.floor(this.width / 8); x++) {
+      for (let x = 0; x < Math.ceil(this.width / 8); x++) {
         const [matL, lumDCoef] = this.buildMatrix(
           stream,
           0,

@@ -1,12 +1,14 @@
 <!doctype html>
 <html>
   <body>
-    <h1>hello world</h1>
+    <h1 id="title">Image decoder</h1>
+    <h3 id="error" style="color: red;"></h3>
     <input id="input">
     <button id="button">load</button>
     <br/>
-    <canvas id="canvas" width="1400" height="1100" style="border: 1px solid black"></canvas>
+    <br/>
+    <canvas id="canvas" style="display: none;" width="0" height="0" style="border: 1px solid black"></canvas>
   </body>
 
-  <script type="module" src="./jpeg.js"></script>
+  <script type="module" src="./image-decoder.js"></script>
 </html>
