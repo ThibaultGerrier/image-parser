@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "dev": "tsc --watch --inlineSourceMap",
+    "serve": "http-server"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "typescript": "^5.4.5"
+  }
+}
