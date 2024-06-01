@@ -1,10 +1,16 @@
 {
   "scripts": {
     "dev": "tsc --watch --inlineSourceMap",
-    "serve": "cd browser && http-server"
+    "serve": "cd browser && http-server",
+    "server": "tsx node/express.ts"
   },
   "devDependencies": {
     "http-server": "^14.1.1",
+    "tsx": "^4.11.0",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
   }
 }

@@ -2,13 +2,20 @@
 <html>
   <body>
     <h1 id="title">Image decoder</h1>
-    <h3 id="error" style="color: red;"></h3>
     <input id="input">
     <button id="button">load</button>
+    <button id="random">random</button>
+    <h3 id="error" style="color: red;"></h3>
     <br/>
     <br/>
     <canvas id="canvas" style="display: none;" width="0" height="0" style="border: 1px solid black"></canvas>
   </body>
 
   <script type="module" src="./image-decoder.js"></script>
+  <style>
+    body {
+        background-color: black;
+        color: white;
+    }
+  </style>
 </html>

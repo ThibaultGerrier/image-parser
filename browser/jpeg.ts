@@ -7,6 +7,7 @@ const markerMapping: Record<number, string> = {
   0xffda: "Start of Scan",
   0xffd9: "End of Image",
   0xfffe: "Comment",
+  0xffdd: "Define Restart Interval",
 };
 
 export class JpegProcessor {
@@ -16,6 +17,7 @@ export class JpegProcessor {
   height: number;
   width: number;
   progressive = false;
+  driMarkerInterval = -1;
 
   processDataChunk(data: Uint8Array) {
     const dv = new DataView(data.buffer);
@@ -26,6 +28,11 @@ export class JpegProcessor {
       pos += 2;
       if (marker === 0xffd8) {
         // start, just skip marker
+      } else if (marker === 0xffe0) {
+        // application default header
+        const len = dv.getUint16(pos);
+        pos += len;
+        console.log(data.subarray(pos + 2, pos + len));
       } else if (marker === 0xffd9) {
         // end
         console.log("done");
@@ -48,6 +55,11 @@ export class JpegProcessor {
         const len = dv.getUint16(pos);
         const quantizationData = data.subarray(pos + 2, pos + len);
         this.decodeQuantization(quantizationData);
+        pos += len;
+      } else if (marker === 0xffdd) {
+        const len = dv.getUint16(pos);
+        const interval = dv.getUint16(pos + 2);
+        this.driMarkerInterval = interval;
         pos += len;
       } else if (marker === 0xffc0) {
         // frame data
@@ -103,6 +115,8 @@ export class JpegProcessor {
     const numComponents = data[5];
     let p = 6;
 
+    const ratios = [];
+
     for (let c = 0; c < numComponents; c++) {
       const id = dv.getUint8(p++);
       const samp = dv.getUint8(p++);
@@ -113,18 +127,21 @@ export class JpegProcessor {
       console.log(s);
       const vert = s.getNBits(4);
       const hor = s.getNBits(4);
+      ratios.push([vert, hor]);
 
       // 17 no subsampling
       // 34 quarter
       // 33 horizontal
       // 18 vertical
       console.log({ id, samp, vert, hor, qtbId, precision });
-
-      if (samp !== 17) {
-        throw new Error("chroma subsampling ratio not supported");
-      }
-
       this.quantMapping.push(qtbId);
+    }
+    if (ratios.flat().some((n) => n !== 1)) {
+      throw new Error(
+        `chroma subsampling ratio not supported: ${ratios
+          .map(([v, h]) => `${v}*${h}`)
+          .join(", ")}`
+      );
     }
     this.height = height;
     this.width = width;
@@ -136,9 +153,20 @@ export class JpegProcessor {
   }
 
   decodeScanData(data: Uint8Array, headerLength: number) {
+    // remove 00 folowing ff
     const data1 = data
       .subarray(headerLength)
       .filter((v, i, arr) => !(v === 0 && arr[i - 1] == 0xff));
+    // remove restart markers (ffd(0-7)), doesn't work yet
+    const data2 = data1.filter((v, i, arr) => {
+      if (v === 0xff && arr[i + 1] >= 0xd0 && arr[i + 1] <= 0xd7) {
+        return false;
+      }
+      if (arr[i - 1] === 0xff && v >= 0xd0 && v <= 0xd7) {
+        return false;
+      }
+      return true;
+    });
     const stream = new BitStream(data1);
     let oldLumDCoef = 0;
     let oldCrDCoef = 0;
@@ -158,12 +186,14 @@ export class JpegProcessor {
           stream,
           1,
           this.quant[this.quantMapping[1]],
+          //   this.quant[this.quantMapping[0]],
           oldCrDCoef
         );
         const [matCb, cbDCoef] = this.buildMatrix(
           stream,
           1,
           this.quant[this.quantMapping[2]],
+          //   this.quant[this.quantMapping[0]],
           oldCbDCoef
         );
         oldLumDCoef = lumDCoef;
@@ -186,12 +216,14 @@ export class JpegProcessor {
   ): [IDCT, number] {
     const i = new IDCT();
     let code = this.huffmanTables[0 + index].getCode(stream);
+    // let code = this.huffmanTables[0].getCode(stream);
     let bits = stream.getNBits(code);
     let dcCoef = decodeNumber(code, bits) + oldDCoef;
     i.base[0] = dcCoef * quant[0];
     let l = 1;
     while (l < 64) {
       code = this.huffmanTables[16 + index].getCode(stream);
+      //   code = this.huffmanTables[0].getCode(stream);
       if (code === 0) {
         break;
       }
