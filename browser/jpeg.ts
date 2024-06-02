@@ -17,7 +17,7 @@ export class JpegProcessor {
   height: number;
   width: number;
   progressive = false;
-  driMarkerInterval = -1;
+  driMarkerInterval: number;
   ratio: string;
   vertRatio: number;
   horRatio: number;
@@ -159,16 +159,7 @@ export class JpegProcessor {
     const data1 = data
       .subarray(headerLength)
       .filter((v, i, arr) => !(v === 0 && arr[i - 1] == 0xff));
-    // remove restart markers (ffd(0-7)), doesn't work yet
-    const data2 = data1.filter((v, i, arr) => {
-      if (v === 0xff && arr[i + 1] >= 0xd0 && arr[i + 1] <= 0xd7) {
-        return false;
-      }
-      if (arr[i - 1] === 0xff && v >= 0xd0 && v <= 0xd7) {
-        return false;
-      }
-      return true;
-    });
+
     const stream = new BitStream(data1);
     let oldLumDCoef = 0;
     let oldCrDCoef = 0;
@@ -183,6 +174,8 @@ export class JpegProcessor {
     const numMCUsX = Math.ceil(this.width / xPixelsPerMcu);
     const finalHeigt = yPixelsPerMcu * numMCUsY;
     const finalWidth = xPixelsPerMcu * numMCUsX;
+
+    let restartCounter = 0;
 
     const imgData = new Uint8ClampedArray(finalHeigt * finalWidth * 4);
     for (let y = 0; y < numMCUsY; y++) {
@@ -236,6 +229,18 @@ export class JpegProcessor {
             imgData[i + 1] = g;
             imgData[i + 2] = b;
             imgData[i + 3] = 255;
+          }
+        }
+
+        if (this.driMarkerInterval) {
+          if (++restartCounter % this.driMarkerInterval === 0) {
+            oldLumDCoef = 0;
+            oldCrDCoef = 0;
+            oldCbDCoef = 0;
+            if (stream.pos & 7) {
+              stream.pos += 8 - (stream.pos & 7);
+            }
+            stream.getNBits(16);
           }
         }
       }
