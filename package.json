@@ -2,9 +2,11 @@
   "scripts": {
     "dev": "tsc --watch --inlineSourceMap",
     "serve": "cd browser && http-server",
-    "server": "tsx node/express.ts"
+    "server": "tsx node/express.ts",
+    "all": "concurrently \"pnpm run dev\" \"pnpm run serve\" \"pnpm run server\""
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "http-server": "^14.1.1",
     "tsx": "^4.11.0",
     "typescript": "^5.4.5"

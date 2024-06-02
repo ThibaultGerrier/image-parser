@@ -7,7 +7,7 @@ import { PngProcessor } from "./png.js";
     const input = (document.getElementById("input") as HTMLInputElement).value;
     console.log(input);
     try {
-      await loadImage(input);
+      await loadImage(input.trim());
     } catch (e: any) {
       setError(e);
     }
@@ -22,7 +22,7 @@ import { PngProcessor } from "./png.js";
     const input = document.getElementById("input") as HTMLInputElement;
     input.value = filename;
     try {
-      await loadImage(filename);
+      await loadImage(filename.trim());
     } catch (e: any) {
       setError(e);
     }
@@ -55,7 +55,7 @@ async function loadImage(url: string) {
     setError("file not found");
     return;
   }
-  const fileName = url.split("/").pop()?.toLocaleLowerCase() as string;
+  const fileName = url.split("/").pop()?.toLowerCase() as string;
   const el = document.getElementById("title");
   const buf = await res.arrayBuffer();
   if (el) {

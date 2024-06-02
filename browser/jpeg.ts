@@ -18,6 +18,9 @@ export class JpegProcessor {
   width: number;
   progressive = false;
   driMarkerInterval = -1;
+  ratio: string;
+  vertRatio:number;
+  horRatio: number;
 
   processDataChunk(data: Uint8Array) {
     const dv = new DataView(data.buffer);
@@ -124,24 +127,23 @@ export class JpegProcessor {
       const a = new Uint8Array(1);
       a[0] = samp;
       const s = new BitStream(a);
-      console.log(s);
       const vert = s.getNBits(4);
       const hor = s.getNBits(4);
       ratios.push([vert, hor]);
-
-      // 17 no subsampling
-      // 34 quarter
-      // 33 horizontal
-      // 18 vertical
       console.log({ id, samp, vert, hor, qtbId, precision });
       this.quantMapping.push(qtbId);
     }
-    if (ratios.flat().some((n) => n !== 1)) {
-      throw new Error(
-        `chroma subsampling ratio not supported: ${ratios
-          .map(([v, h]) => `${v}*${h}`)
-          .join(", ")}`
-      );
+    this.horRatio = ratios[0][0];
+    this.vertRatio = ratios[0][1];
+    if (ratios[0][0] === 2 && ratios[0][1] === 2) {
+      this.ratio = "4:2:0";
+    } else if (ratios[0][0] === 2 && ratios[0][1] === 1) {
+      this.ratio = "4:2:2";
+    } else if (ratios[0][0] === 1 && ratios[0][1] === 1) {
+      this.ratio = "4:4:4";
+    } else {
+      const str = ratios.map(([v, h]) => `${v}*${h}`).join(", ");
+      throw new Error(`Unsupported chroma subsampling ratio: ${str}`);
     }
     this.height = height;
     this.width = width;
@@ -174,36 +176,52 @@ export class JpegProcessor {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     canvas.width = this.width;
     canvas.height = this.height;
-    for (let y = 0; y < Math.floor(this.height / 8); y++) {
-      for (let x = 0; x < Math.ceil(this.width / 8); x++) {
-        const [matL, lumDCoef] = this.buildMatrix(
-          stream,
-          0,
-          this.quant[this.quantMapping[0]],
-          oldLumDCoef
-        );
+    const numYBlocks = this.vertRatio * this.horRatio;
+    const numMCUsY = Math.floor(this.height / (8 * this.vertRatio))
+    const numMCUsX = Math.ceil(this.width / (8 * this.horRatio))
+    for (let y = 0; y < numMCUsY; y++) {
+      for (let x = 0; x < numMCUsX; x++) {
+        const matLs = [];
+        for (let i = 0; i < numYBlocks; i++) {
+          const [matL, lumDCoef] = this.buildMatrix(
+            stream,
+            0,
+            this.quant[this.quantMapping[0]],
+            oldLumDCoef
+          );
+          oldLumDCoef = lumDCoef;
+          matLs.push(matL);
+        }
         const [matCr, crDCoef] = this.buildMatrix(
           stream,
           1,
           this.quant[this.quantMapping[1]],
-          //   this.quant[this.quantMapping[0]],
           oldCrDCoef
         );
+        oldCrDCoef = crDCoef;
         const [matCb, cbDCoef] = this.buildMatrix(
           stream,
           1,
           this.quant[this.quantMapping[2]],
-          //   this.quant[this.quantMapping[0]],
           oldCbDCoef
         );
-        oldLumDCoef = lumDCoef;
-        oldCrDCoef = crDCoef;
         oldCbDCoef = cbDCoef;
-
-        const image = this.drawMatrix(x, y, matL.out, matCb.out, matCr.out);
-        const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-        const ctx = canvas.getContext("2d");
-        ctx?.putImageData(image, x * 8, y * 8);
+        
+        // TODO: rather than taking the same b/r matrix for all n blocks, should enlargen the individual color pixels of the matrices and just draw one 16*16 / 8*16 matrix
+        for (let i = 0; i < numYBlocks; i++) {
+          const image = this.drawMatrix(
+            matLs[i].out,
+            matCb.out,
+            matCr.out
+          );
+          const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+          const ctx = canvas.getContext("2d");
+          const xPos = x * 8 * this.horRatio;
+          const yPos = y * 8 * this.vertRatio;
+          const dx = (i % 2) * 8;
+          const dy = i >= 2 ? 8 : 0;
+          ctx?.putImageData(image, xPos+dx, yPos+dy);
+        }
       }
     }
   }
@@ -216,14 +234,12 @@ export class JpegProcessor {
   ): [IDCT, number] {
     const i = new IDCT();
     let code = this.huffmanTables[0 + index].getCode(stream);
-    // let code = this.huffmanTables[0].getCode(stream);
     let bits = stream.getNBits(code);
     let dcCoef = decodeNumber(code, bits) + oldDCoef;
     i.base[0] = dcCoef * quant[0];
     let l = 1;
     while (l < 64) {
       code = this.huffmanTables[16 + index].getCode(stream);
-      //   code = this.huffmanTables[0].getCode(stream);
       if (code === 0) {
         break;
       }
@@ -244,8 +260,6 @@ export class JpegProcessor {
   }
 
   drawMatrix(
-    x: number,
-    y: number,
     matL: number[][],
     matCb: number[][],
     matCr: number[][]
