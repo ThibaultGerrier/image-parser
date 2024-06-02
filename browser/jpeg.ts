@@ -324,6 +324,16 @@ function decodeNumber(code: number, bits: number) {
   return bits - (2 * l - 1);
 }
 
+const normCoef = (n: number) => (n === 0 ? 1 / Math.sqrt(2) : 1);
+
+const idctTable = new Array(8)
+  .fill([])
+  .map((e1, u) =>
+    new Array(8)
+      .fill(0)
+      .map((e2, x) => normCoef(u) * Math.cos(((2 * x + 1) * u * Math.PI) / 16))
+  );
+
 class IDCT {
   base: number[] = new Array(64).fill(0);
   out: number[][];
@@ -337,25 +347,6 @@ class IDCT {
     [21, 34, 37, 47, 50, 56, 59, 61],
     [35, 36, 48, 49, 57, 58, 62, 63],
   ];
-  idctPrecision = 8;
-  idctTable = this.buildIdctTable();
-
-  buildIdctTable() {
-    return new Array(this.idctPrecision)
-      .fill([])
-      .map((e1, u) =>
-        new Array(this.idctPrecision)
-          .fill(0)
-          .map(
-            (e2, x) =>
-              this.normCoef(u) * Math.cos(((2 * x + 1) * u * Math.PI) / 16)
-          )
-      );
-  }
-
-  normCoef(n: number) {
-    return n === 0 ? 1 / Math.sqrt(2) : 1;
-  }
 
   rearangeUsingZigZag() {
     for (let x = 0; x < 8; x++) {
@@ -372,10 +363,9 @@ class IDCT {
     for (let x = 0; x < 8; x++) {
       for (let y = 0; y < 8; y++) {
         let localSum = 0;
-        for (let u = 0; u < this.idctPrecision; u++) {
-          for (let v = 0; v < this.idctPrecision; v++) {
-            localSum +=
-              this.zigZag[v][u] * this.idctTable[u][x] * this.idctTable[v][y];
+        for (let u = 0; u < 8; u++) {
+          for (let v = 0; v < 8; v++) {
+            localSum += this.zigZag[v][u] * idctTable[u][x] * idctTable[v][y];
           }
         }
         out[y][x] = Math.floor(localSum / 4);

@@ -62,6 +62,7 @@ async function loadImage(url: string) {
     el.innerText = `${fileName} (${(buf.byteLength / 1024**2).toPrecision(2)} MB)`;
   }
   await sleep(10);
+  console.time('image')
   if (fileName.endsWith(".jpeg") || fileName.endsWith(".jpg")) {
     const jpeg = new JpegProcessor();
     jpeg.processDataChunk(new Uint8Array(buf));
@@ -71,4 +72,5 @@ async function loadImage(url: string) {
   } else {
     setError(`unkown file: ${fileName}`);
   }
+  console.timeEnd('image')
 }
