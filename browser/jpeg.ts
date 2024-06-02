@@ -19,7 +19,7 @@ export class JpegProcessor {
   progressive = false;
   driMarkerInterval = -1;
   ratio: string;
-  vertRatio:number;
+  vertRatio: number;
   horRatio: number;
 
   processDataChunk(data: Uint8Array) {
@@ -177,8 +177,14 @@ export class JpegProcessor {
     canvas.width = this.width;
     canvas.height = this.height;
     const numYBlocks = this.vertRatio * this.horRatio;
-    const numMCUsY = Math.floor(this.height / (8 * this.vertRatio))
-    const numMCUsX = Math.ceil(this.width / (8 * this.horRatio))
+    const xPixelsPerMcu = 8 * this.horRatio;
+    const yPixelsPerMcu = 8 * this.vertRatio;
+    const numMCUsY = Math.floor(this.height / yPixelsPerMcu);
+    const numMCUsX = Math.ceil(this.width / xPixelsPerMcu);
+    const finalHeigt = yPixelsPerMcu * numMCUsY;
+    const finalWidth = xPixelsPerMcu * numMCUsX;
+
+    const imgData = new Uint8ClampedArray(finalHeigt * finalWidth * 4);
     for (let y = 0; y < numMCUsY; y++) {
       for (let x = 0; x < numMCUsX; x++) {
         const matLs = [];
@@ -206,24 +212,37 @@ export class JpegProcessor {
           oldCbDCoef
         );
         oldCbDCoef = cbDCoef;
-        
-        // TODO: rather than taking the same b/r matrix for all n blocks, should enlargen the individual color pixels of the matrices and just draw one 16*16 / 8*16 matrix
-        for (let i = 0; i < numYBlocks; i++) {
-          const image = this.drawMatrix(
-            matLs[i].out,
-            matCb.out,
-            matCr.out
-          );
-          const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-          const ctx = canvas.getContext("2d");
-          const xPos = x * 8 * this.horRatio;
-          const yPos = y * 8 * this.vertRatio;
-          const dx = (i % 2) * 8;
-          const dy = i >= 2 ? 8 : 0;
-          ctx?.putImageData(image, xPos+dx, yPos+dy);
+
+        for (let yy = 0; yy < yPixelsPerMcu; yy++) {
+          for (let xx = 0; xx < xPixelsPerMcu; xx++) {
+            const matLIndex =
+              yy < 8 && xx < 8
+                ? 0
+                : yy < 8 && xx >= 8
+                ? 1
+                : yy >= 8 && xx < 8
+                ? 2
+                : 3;
+            const cy = matLs[matLIndex].out[yy % 8][xx % 8];
+            const ccy = Math.floor(yy / this.vertRatio);
+            const ccx = Math.floor(xx / this.horRatio);
+            const cr = matCr.out[ccy][ccx];
+            const cb = matCb.out[ccy][ccx];
+            const [r, g, b] = colorConversion(cy, cb, cr);
+            const xPos = x * xPixelsPerMcu + xx;
+            const yPos = y * yPixelsPerMcu + yy;
+            const i = (xPos + yPos * finalWidth) * 4;
+            imgData[i] = r;
+            imgData[i + 1] = g;
+            imgData[i + 2] = b;
+            imgData[i + 3] = 255;
+          }
         }
       }
     }
+
+    const ctx = canvas.getContext("2d");
+    ctx?.putImageData(new ImageData(imgData, finalWidth, finalHeigt), 0, 0);
   }
 
   buildMatrix(
@@ -257,29 +276,6 @@ export class JpegProcessor {
     i.rearangeUsingZigZag();
     i.performIDCT();
     return [i, dcCoef];
-  }
-
-  drawMatrix(
-    matL: number[][],
-    matCb: number[][],
-    matCr: number[][]
-  ) {
-    const dataArray = new Uint8ClampedArray(64 * 4);
-    for (let xx = 0; xx < 8; xx++) {
-      for (let yy = 0; yy < 8; yy++) {
-        const [r, g, b] = colorConversion(
-          matL[yy][xx],
-          matCb[yy][xx],
-          matCr[yy][xx]
-        );
-        const i = (yy * 8 + xx) * 4;
-        dataArray[i] = r;
-        dataArray[i + 1] = g;
-        dataArray[i + 2] = b;
-        dataArray[i + 3] = 255;
-      }
-    }
-    return new ImageData(dataArray, 8, 8);
   }
 }
 
